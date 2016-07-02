@@ -1,7 +1,12 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"flag"
+	"io/ioutil"
 	"log"
+	"path/filepath"
 
 	"github.com/streadway/amqp"
 )
@@ -13,7 +18,28 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := amqp.Dial("amqps://guest:guest@localhost:5671/")
+	var caDir string
+	flag.StringVar(&caDir, "ca-dir", "./testca", "CA directory")
+	var clientCertDir string
+	flag.StringVar(&clientCertDir, "client-cert-dir", "./client", "client certificate directory")
+	var clientKeyDir string
+	flag.StringVar(&clientKeyDir, "client-key-dir", "./client", "client certificate key directory")
+	flag.Parse()
+
+	cfg := new(tls.Config)
+	cfg.RootCAs = x509.NewCertPool()
+
+	cacertPath := filepath.Join(caDir, "cacert.pem")
+	if ca, err := ioutil.ReadFile(cacertPath); err == nil {
+		cfg.RootCAs.AppendCertsFromPEM(ca)
+	}
+	clientCertPath := filepath.Join(clientCertDir, "cert.pem")
+	clientKeyPath := filepath.Join(clientKeyDir, "key.pem")
+	if cert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath); err == nil {
+		cfg.Certificates = append(cfg.Certificates, cert)
+	}
+
+	conn, err := amqp.DialTLS("amqps://guest:guest@localhost:5671/", cfg)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
